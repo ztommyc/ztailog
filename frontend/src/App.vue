@@ -23,6 +23,21 @@
             @refresh="loadHosts"
           />
         </div>
+        <!-- 底部添加仓库链接 -->
+        <div class="sidebar-footer">
+          <div class="repo-links">
+            <a href="https://gitee.com/ztommy/ztailog.git" target="_blank" class="repo-link">
+              <el-icon><Connection /></el-icon>
+              Gitee
+            </a>
+            <a href="https://github.com/ztommyc/ztailog.git" target="_blank" class="repo-link">
+              <el-icon><Connection /></el-icon>
+              GitHub
+            </a>
+          </div>
+          <div class="version">v1.0.0</div>
+        </div>		
+		
       </el-aside>
       
       <!-- 拖拽条 -->
@@ -97,7 +112,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Monitor, Plus } from '@element-plus/icons-vue'
+import { Monitor, Plus, Connection } from '@element-plus/icons-vue'
 import HostManager from './components/HostManager.vue'
 import LogViewer from './components/LogViewer.vue'
 import api from './stores/api'
@@ -397,5 +412,39 @@ onUnmounted(() => {
   .sidebar.open {
     transform: translateX(0);
   }
+}
+
+/* 添加底部样式 */
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid #334155;
+  margin-top: auto;
+}
+
+.repo-links {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.repo-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 12px;
+  transition: color 0.2s;
+}
+
+.repo-link:hover {
+  color: #60a5fa;
+}
+
+.version {
+  text-align: center;
+  color: #475569;
+  font-size: 11px;
 }
 </style>
