@@ -70,7 +70,35 @@
           <el-form-item label="语法高亮" style="margin-left: 12px">
             <el-switch v-model="enableHighlight" />
           </el-form-item>
-          
+		  
+          <!-- 新增：关键词过滤 -->
+          <el-form-item label="关键词过滤" style="margin-left: 12px">
+            <el-input 
+              v-model="filterKeyword"
+              placeholder="输入关键词过滤日志"
+              style="width: 200px"
+              size="default"
+              clearable
+              @clear="clearFilter"
+              @keyup.enter="applyFilter"
+            >         
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+        <template #append>
+          <el-button @click="applyFilter" :type="filterActive ? 'primary' : 'default'">
+            <el-icon><Filter /></el-icon>
+          </el-button>
+        </template>
+      </el-input>
+    </el-form-item>
+    
+    <!-- 过滤状态提示 -->
+    <el-form-item v-if="filterActive" style="margin-left: 12px">
+      <el-tag type="info" closable @close="clearFilter">
+        过滤: {{ filterKeyword }} ({{ filteredCount }}/{{ originalLogLines.length }})
+      </el-tag>
+    </el-form-item>			
           <el-form-item v-if="currentLogType === 'file'" label="日志路径" class="log-path-input">
             <el-autocomplete
               v-model="logPath"
@@ -239,7 +267,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { ElMessage, ElLoading, ElMessageBox } from 'element-plus'
-import { Document, Refresh, Download, VideoPlay, VideoPause, ArrowDown } from '@element-plus/icons-vue'
+import { Document, Refresh, Download, VideoPlay, VideoPause, ArrowDown,Search, Filter } from '@element-plus/icons-vue'
 import api, { downloadApi } from '../stores/api'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/atom-one-dark.css'  // 使用 atom-one-dark 主题，适合深色背景
@@ -288,10 +316,21 @@ let nextId = 0
 
 // 添加日志行的函数
 const addLogLine = (text) => {
-  logLines.value.push({
-    id: nextId++,
-    text: text
-  })
+  const newLine = { id: nextId++, text: text }
+  
+  // 保存到原始日志
+  originalLogLines.value.push(newLine)
+  
+  // 如果正在过滤，只添加匹配的日志
+  if (filterActive.value && filterKeyword.value) {
+    const keyword = filterKeyword.value.toLowerCase()
+    if (text.toLowerCase().includes(keyword)) {
+      logLines.value.push(newLine)
+      filteredCount.value++
+    }
+  } else {
+    logLines.value.push(newLine)
+  }
 }
 
 
@@ -305,6 +344,13 @@ const k8sNamespaces = ref([])
 const k8sPods = ref([])
 const selectedNamespace = ref('default')
 const selectedPod = ref('')
+
+const filterKeyword = ref('')
+const filterActive = ref(false)
+const originalLogLines = ref([])  // 原始日志行
+const filteredCount = ref(0)
+
+
 
 // WebSocket相关
 let ws = null
@@ -484,7 +530,15 @@ const highlightLine = (line) => {
       return `<span class="${rule.class}">${match}</span>`
     })
   })
-  
+ 
+
+  // 添加关键词高亮
+  if (filterActive.value && filterKeyword.value) {
+    const keyword = filterKeyword.value
+    const regex = new RegExp(`(${escapeRegex(keyword)})`, 'gi')
+    highlighted = highlighted.replace(regex, '<mark class="keyword-highlight">$1</mark>')
+  }
+ 
   return highlighted
 }
 
@@ -527,7 +581,9 @@ const processCompleteLines = (data) => {
 // 清空日志
 const clearLogs = () => {
   logLines.value = []
+  originalLogLines.value = []
   nextId = 0
+  clearFilter()
 }
 // 滚动到底部函数
 const scrollToBottom = () => {
@@ -1045,6 +1101,68 @@ const resetAllState = () => {
   linesToShow.value = props.logConfig[currentLogType.value] || 100
 }
 
+
+// 过滤函数
+const applyFilter = () => {
+  if (!filterKeyword.value || filterKeyword.value.trim() === '') {
+    clearFilter()
+    return
+  }
+  
+  filterActive.value = true
+  const keyword = filterKeyword.value.toLowerCase()
+  
+  // 过滤日志行
+  const filtered = originalLogLines.value.filter(line => {
+    const text = typeof line === 'string' ? line : line.text
+    return text.toLowerCase().includes(keyword)
+  })
+  
+  filteredCount.value = filtered.length
+  
+  // 更新显示
+  if (logLines.value.length > 0 && typeof logLines.value[0] === 'object') {
+    // 对象数组格式
+    logLines.value = filtered
+  } else {
+    // 字符串数组格式
+    logLines.value = filtered
+  }
+  
+  if (filtered.length === 0) {
+    ElMessage.info('没有找到包含关键词的日志')
+  } else {
+    ElMessage.success(`找到 ${filtered.length} 条匹配的日志`)
+  }
+}
+
+// 清除过滤
+const clearFilter = () => {
+  filterActive.value = false
+  filterKeyword.value = ''
+  
+  // 恢复原始日志
+  if (originalLogLines.value.length > 0) {
+    logLines.value = [...originalLogLines.value]
+  }
+  
+  filteredCount.value = 0
+  ElMessage.info('已清除过滤')
+}
+
+// 高亮关键词（在已有高亮基础上添加）
+const highlightKeyword = (text, keyword) => {
+  if (!keyword || !filterActive.value) return text
+  
+  const regex = new RegExp(`(${escapeRegex(keyword)})`, 'gi')
+  return text.replace(regex, '<mark class="keyword-highlight">$1</mark>')
+}
+
+// 转义正则表达式特殊字符
+const escapeRegex = (str) => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 onMounted(() => {
   linesToShow.value = props.logConfig.file || 100
   loadContainers()
@@ -1386,5 +1504,23 @@ watch(currentLogType, handleTypeChange)
 }
 
 
+/* 关键词高亮样式 */
+.keyword-highlight {
+  background-color: #ffeb3b;
+  color: #000000;
+  font-weight: bold;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+/* 过滤输入框样式 */
+.el-input-group__append .el-button {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* 过滤状态标签 */
+.el-tag {
+  cursor: pointer;
+}
 
 </style>
