@@ -786,8 +786,19 @@ const downloadCurrentLog = () => {
 # 导出时间: ${new Date().toLocaleString()}
 # 日志行数: ${logLines.value.length}
 # ${'-'.repeat(60)}\n\n`
-  
-  const content = header + logLines.value.join('\n')
+   // 修复：提取日志文本内容
+  let contentLines = []
+  for (const line of logLines.value) {
+    if (typeof line === 'string') {
+      contentLines.push(line)
+    } else if (line && typeof line === 'object') {
+      // 对象格式，取 text 字段
+      contentLines.push(line.text || JSON.stringify(line))
+    } else {
+      contentLines.push(String(line))
+    }
+  } 
+  const content = header + contentLines.join('\n')
   
   // 下载文件
   const blob = new Blob([content], { type: 'text/plain' })
