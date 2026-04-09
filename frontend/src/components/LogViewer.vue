@@ -367,7 +367,6 @@ const logPathInputRef = ref(null)
 const logContainer = ref(null)
 
 
-let userScrolled = false
 let scrollTimer = null  // 添加这行
 
 // 加载日志路径历史
@@ -1288,13 +1287,7 @@ watch(currentLogType, handleTypeChange)
   background: #1e1e1e;
 }
 
-.log-content {
-  flex: 1;
-  overflow-y: auto;
-  background: #1e1e1e;
-  border-radius: 0 0 12px 12px;
 
-}
 
 .log-line {
   padding: 2px 12px;
@@ -1315,13 +1308,6 @@ watch(currentLogType, handleTypeChange)
   background: #2d2d2d;
 }
 
-.log-loading {
-  padding: 20px;
-  text-align: center;
-  color: #9ca3af;
-  font-style: italic;
-  background: #1e1e1e;
-}
 /* 确保 highlight.js 样式覆盖正确 */
 .log-line :deep(.hljs) {
   background: transparent;
