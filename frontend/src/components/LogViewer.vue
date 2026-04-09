@@ -204,22 +204,34 @@
             </el-select>
           </el-form-item>
           
-          <el-form-item v-if="currentLogType === 'k8s'" label="Pod">
-            <el-select 
-              v-model="selectedPod" 
-              placeholder="请选择Pod"
-              @change="handleK8sChange"
-              style="width: 300px"
-              size="default"
-            >
-              <el-option 
-                v-for="pod in k8sPods" 
-                :key="pod"
-                :label="pod"
-                :value="pod"
-              />
-            </el-select>
-          </el-form-item>
+<el-form-item v-if="currentLogType === 'k8s'" label="Pod">
+  <el-select 
+    v-model="selectedPod" 
+    placeholder="请选择Pod"
+    @change="handleK8sChange"
+    style="width: 400px"
+    size="default"
+  >
+    <el-option 
+      v-for="pod in k8sPods" 
+      :key="pod.name"
+      :label="pod.name"
+      :value="pod.name"
+    >
+      <div class="k8s-pod-option">
+        <span class="pod-name">{{ pod.name }}</span>
+        <el-tag 
+          :type="getPodStatusType(pod.status)" 
+          size="small" 
+          class="pod-status"
+        >
+          {{ pod.status }}
+        </el-tag>
+        <span class="pod-age">{{ pod.age }}</span>
+      </div>
+    </el-option>
+  </el-select>
+</el-form-item>
         </el-form>
       </div>
       <!-- 提示信息放在顶部，在滚动区域之前 -->
@@ -367,7 +379,6 @@ const logPathInputRef = ref(null)
 const logContainer = ref(null)
 
 
-let scrollTimer = null  // 添加这行
 
 // 加载日志路径历史
 const loadLogPathHistory = async () => {
@@ -851,12 +862,38 @@ const loadContainers = async () => {
 const loadK8sPods = async () => {
   try {
     const response = await api.get(`/hosts/${props.host.id}/containers/k8s`)
-    k8sPods.value = response.data[selectedNamespace.value] || []
+    const podsData = response.data[selectedNamespace.value] || []
+    
+    // 处理不同的数据格式
+    if (Array.isArray(podsData)) {
+      if (podsData.length > 0) {
+        // 检查第一个元素是字符串还是对象
+        if (typeof podsData[0] === 'string') {
+          // 字符串数组，转换为对象格式
+          k8sPods.value = podsData.map(name => ({
+            name: name,
+            status: 'Unknown',
+            age: '-'
+          }))
+        } else {
+          // 已经是对象数组
+          k8sPods.value = podsData
+        }
+      } else {
+        k8sPods.value = []
+      }
+    } else {
+      k8sPods.value = []
+    }
+    
+    // 自动选中第一个 Pod
     if (k8sPods.value.length > 0 && !selectedPod.value) {
-      selectedPod.value = k8sPods.value[0]
+      selectedPod.value = k8sPods.value[0].name
     }
   } catch (error) {
+    console.error('加载K8s Pod失败:', error)
     ElMessage.error('加载K8s Pod失败')
+    k8sPods.value = []
   }
 }
 
@@ -1160,6 +1197,21 @@ const clearFilter = () => {
   ElMessage.info('已清除过滤')
 }
 
+
+
+// 获取 Pod 状态对应的标签类型
+const getPodStatusType = (status) => {
+  const statusMap = {
+    'Running': 'success',
+    'Pending': 'warning',
+    'Failed': 'danger',
+    'Succeeded': 'info',
+    'Unknown': 'info'
+  }
+  return statusMap[status] || 'info'
+}
+
+
 // 高亮关键词（在已有高亮基础上添加）
 const highlightKeyword = (text, keyword) => {
   if (!keyword || !filterActive.value) return text
@@ -1206,13 +1258,7 @@ onUnmounted(() => {
     ws.close()
   }
   resetBuffer()
-  // 移除事件监听
-  if (logContainer.value) {
-    logContainer.value.removeEventListener('scroll', handleScroll)
-  }
-  if (scrollTimer) {
-    clearTimeout(scrollTimer)
-  }  
+
 })
 
 
@@ -1519,5 +1565,28 @@ watch(currentLogType, handleTypeChange)
 .el-tag {
   cursor: pointer;
 }
+/* K8s Pod 选项样式 */
+.k8s-pod-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
 
+.pod-name {
+  flex: 1;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.pod-status {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.pod-age {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #909399;
+}
 </style>

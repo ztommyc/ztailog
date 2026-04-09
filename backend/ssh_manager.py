@@ -116,12 +116,31 @@ class SSHConnection:
         return ['default']
     
     def get_k8s_pods(self, namespace='default'):
-        """获取K8s Pod列表"""
-        command = f"kubectl -n {namespace} get pods -o jsonpath='{{.items[*].metadata.name}}'"
+        """获取K8s Pod列表（包含状态和年龄）"""
+        # 使用默认格式，kubectl 会自动显示友好的 AGE（如 5d, 2h, 30m）
+        command = f"kubectl -n {namespace} get pods --no-headers"
         output, error = self.execute_command(command)
+        
+        pods = []
         if output:
-            return output.strip().split()
-        return []
+            lines = output.strip().split('\n')
+            for line in lines:
+                if line.strip():
+                    parts = line.split()
+                    # kubectl get pods 默认输出: NAME READY STATUS RESTARTS AGE
+                    if len(parts) >= 5:
+                        pods.append({
+                            'name': parts[0],
+                            'status': parts[2],  # STATUS 列
+                            'age': parts[4]      # AGE 列（已经是友好格式，如 13d, 2h, 5m）
+                        })
+                    elif len(parts) >= 3:
+                        pods.append({
+                            'name': parts[0],
+                            'status': parts[2] if len(parts) > 2 else 'Unknown',
+                            'age': parts[4] if len(parts) > 4 else '-'
+                        })
+        return pods
     
     def tail_log(self, log_path: str, lines: int = 100, channel_id: str = None):
         """实时跟踪文件日志"""
