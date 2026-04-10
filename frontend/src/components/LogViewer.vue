@@ -249,10 +249,11 @@
         ref="scroller"
         class="log-scroller"
         :items="logLines"
-        :min-item-size="22"
+        :min-item-size="28"
         key-field="id"
         :emit-update="true"
-      >
+        :pooling="true"
+        >
         <template v-slot="{ item, index, active }">
 	
           <DynamicScrollerItem
@@ -599,6 +600,8 @@ const clearLogs = () => {
 const scrollToBottom = () => {
   nextTick(() => {
     if (scroller.value) {
+	  // 强制更新 scroller
+      scroller.value.$forceUpdate()
       // 滚动到底部
       scroller.value.scrollToBottom()
     }
@@ -1333,10 +1336,21 @@ watch(currentLogType, handleTypeChange)
   background: #1e1e1e;
 }
 
+/* 修复虚拟滚动重叠问题 */
+.log-scroller :deep(.vue-recycle-scroller) {
+  height: 100%;
+}
 
+.log-scroller :deep(.vue-recycle-scroller__item-wrapper) {
+  overflow: visible;
+}
+
+.log-scroller :deep(.vue-recycle-scroller__item-view) {
+  margin-bottom: 0;
+}
 
 .log-line {
-  padding: 2px 12px;
+  padding: 4px 12px;
   border-bottom: 1px solid #2d2d2d;
   font-family: 'Courier New', 'Monaco', monospace;
   font-size: 12px;
@@ -1346,7 +1360,10 @@ watch(currentLogType, handleTypeChange)
   overflow-x: hidden;         /* 隐藏水平滚动条 */
   background: transparent;
   color: #abb2bf;
-  line-height: 1.4;           /* 增加行高，让换行后更易读 */
+  line-height: 1.5;           /* 增加行高，让换行后更易读 */
+  min-height: 28px;
+  /* 确保盒模型正确 */
+  box-sizing: border-box;
 }
 
 
