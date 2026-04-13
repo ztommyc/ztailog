@@ -1,9 +1,9 @@
 fastapi==0.83.0
-uvicorn[standard]==0.17.0
+uvicorn[standard]==0.16.0
 paramiko==2.11.0
 sqlalchemy==1.4.46
 websockets==9.1
 python-multipart==0.0.5
-aiofiles==22.1.0
-pydantic==1.10.8
+aiofiles==0.8.0
+pydantic==1.9.2
 greenlet==2.0.2
