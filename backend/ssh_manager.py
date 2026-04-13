@@ -150,18 +150,59 @@ class SSHConnection:
         return self._tail_command(command, channel_id)
     
     def tail_docker_logs(self, container_name: str, lines: int = 100, channel_id: str = None):
-        """实时跟踪Docker日志"""
-        command = f"docker logs -f --tail={lines} {container_name}"
+        """查看Docker日志（自动判断实时或历史）"""
+        # 检查容器状态
+        status_cmd = f"docker inspect -f '{{{{.State.Status}}}}' {container_name}"
+        status_output, _ = self.execute_command(status_cmd)
+        status = status_output.strip() if status_output else ''
+        
+        print(f"容器 {container_name} 状态: {status}")
+        
+        if status in ['exited', 'dead', 'created', 'stopped']:
+            # 已停止的容器，只获取历史日志，不使用 -f
+            command = f"docker logs --tail={lines} {container_name}"
+            print(f"使用历史日志命令: {command}")
+        else:
+            # 运行中的容器，实时跟踪
+            command = f"docker logs -f --tail={lines} {container_name}"
+            print(f"使用实时跟踪命令: {command}")
+			
+        test_output, test_error = self.execute_command(f"{command} 2>&1 | head -5")
+        print(f"测试命令输出: {test_output[:200] if test_output else '无'}")
+        print(f"测试命令错误: {test_error[:200] if test_error else '无'}")        
+		
         return self._tail_command(command, channel_id)
+
     
     def tail_podman_logs(self, container_name: str, lines: int = 100, channel_id: str = None):
-        """实时跟踪Podman日志"""
-        command = f"podman logs -f --tail={lines} {container_name}"
+        """实时跟踪Podman日志（支持已停止的容器）"""
+        # 检查容器状态
+        status_cmd = f"podman inspect -f '{{{{.State.Status}}}}' {container_name}"
+        status_output, _ = self.execute_command(status_cmd)
+        status = status_output.strip() if status_output else ''
+        
+        if status in ['exited', 'stopped']:
+            command = f"podman logs --tail={lines} {container_name}"
+        else:
+            command = f"podman logs -f --tail={lines} {container_name}"
+        
         return self._tail_command(command, channel_id)
     
     def tail_k8s_logs(self, namespace: str, pod_name: str, lines: int = 100, channel_id: str = None):
-        """实时跟踪K8s日志"""
-        command = f"kubectl -n {namespace} logs -f --tail={lines} {pod_name}"
+        """查看K8s日志（支持已停止的Pod）"""
+        # K8s 可以使用 --previous 查看已停止容器的日志
+        # 先检查 Pod 状态
+        status_cmd = f"kubectl -n {namespace} get pod {pod_name} -o jsonpath='{{.status.phase}}'"
+        status_output, _ = self.execute_command(status_cmd)
+        status = status_output.strip() if status_output else ''
+        
+        if status in ['Failed', 'Succeeded']:
+            # 已停止的 Pod，使用 --previous 查看之前容器的日志
+            command = f"kubectl -n {namespace} logs --previous --tail={lines} {pod_name}"
+        else:
+            # 运行中的 Pod，实时跟踪
+            command = f"kubectl -n {namespace} logs -f --tail={lines} {pod_name}"
+        
         return self._tail_command(command, channel_id)
     
     def _tail_command(self, command: str, channel_id: str = None):

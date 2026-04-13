@@ -66,9 +66,17 @@ class LogStreamManager:
                 if channel.exit_status_ready():
                     status = channel.recv_exit_status()
                     print(f"通道关闭，退出状态: {status}")
+                    
+                    # 对于已停止的容器，正常退出后不需要报错
                     if status != 0:
                         error_msg = f"命令执行失败，退出状态: {status}"
                         self._broadcast_error(stream_id, error_msg)
+                    # 通知前端日志流已结束
+                    data = channel.recv(-1).decode('utf-8', errors='ignore')
+                    data += "\n[日志流已结束 - 容器已停止]\n"
+                    self._broadcast_log(stream_id, data)
+                    # 延迟关闭，让前端有时间显示最后的日志
+                    time.sleep(1)
                     break
                     
             except Exception as e:
@@ -77,7 +85,6 @@ class LogStreamManager:
                 break
         
         self.remove_stream(stream_id)
-    
     def _broadcast_log(self, stream_id: str, data: str):
         """广播日志数据 - 使用事件循环发送"""
         if stream_id in self.websocket_connections and self.loop:

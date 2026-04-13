@@ -974,47 +974,45 @@ const startLogging = () => {
   }
   
   ws.onmessage = (event) => {
-  // 确保数据是字符串格式
-  let data
-  try {
-    data = JSON.parse(event.data)
-  } catch (e) {
-    console.error('解析消息失败:', e)
-    return
-  }
-  
-  if (data.type === 'log') {
-    // 确保数据是 UTF-8 字符串
-    let logData = data.data
-    // 处理可能的编码问题
-    if (typeof logData === 'string') {
-      // 移除可能存在的 BOM 头
-      if (logData.charCodeAt(0) === 0xFEFF) {
-        logData = logData.slice(1)
+    let data
+    try {
+      data = JSON.parse(event.data)
+    } catch (e) {
+      console.error('解析消息失败:', e)
+      return
+    }
+    
+    if (data.type === 'log') {
+      let logData = data.data
+      if (typeof logData === 'string') {
+        if (logData.charCodeAt(0) === 0xFEFF) {
+          logData = logData.slice(1)
+        }
+        processCompleteLines(logData)
       }
-      processCompleteLines(logData)
+    } else if (data.type === 'heartbeat') {
+      // 心跳消息
+    } else if (data.type === 'error') {
+      console.error('服务器错误:', data.message)
+      ElMessage.error(data.message)
+      if (data.message.includes('不是文本文件')) {
+        stopLogging()
+      }
+    } else if (data.type === 'warning') {
+      console.warn('服务器警告:', data.message)
+      ElMessage.warning(data.message)
+    } else if (data.type === 'started') {
+      console.log('开始跟踪:', data.message)
+      ElMessage.success(data.message)
+    } else if (data.type === 'stopped') {
+      console.log('停止跟踪:', data.message)
+      ElMessage.info(data.message)
+    } else if (data.type === 'log_end') {
+      // 日志流结束（容器已停止）
+      console.log('日志流结束:', data.message)
+      ElMessage.info(data.message)
+      isConnected.value = false
     }
-  }else if (data.type === 'heartbeat') {
-   // 心跳消息，保持连接
-  }else if (data.type === 'error') {
-    console.error('服务器错误:', data.message)
-    ElMessage.error(data.message)
-	    // 如果是文件类型错误，自动停止
-    if (data.message.includes('不是文本文件')) {
-      stopLogging()
-    }
-  }
-  else if (data.type === 'warning') {
-    console.warn('服务器警告:', data.message)
-    ElMessage.warning(data.message)
-  }
-  else if (data.type === 'started') {
-    console.log('开始跟踪:', data.message)
-    ElMessage.success(data.message)
-  }else if (data.type === 'stopped') {
-    console.log('停止跟踪:', data.message)
-    ElMessage.info(data.message)
-  }
   }
   
   ws.onclose = () => {
@@ -1097,6 +1095,26 @@ const handleTypeChange = () => {
 
 
 const handleContainerChange = () => {
+  // 检查容器状态并提示
+  let containerInfo = null
+  if (currentLogType.value === 'docker') {
+    containerInfo = dockerContainers.value.find(c => c.name === selectedContainer.value)
+  } else if (currentLogType.value === 'podman') {
+    containerInfo = podmanContainers.value.find(c => c.name === selectedContainer.value)
+  }
+  
+  if (containerInfo) {
+    const status = containerInfo.status.toLowerCase()
+    if (status.includes('exited') || status.includes('stopped')) {
+      ElMessage.info({
+        message: `容器状态: ${containerInfo.status}，只能查看历史日志，无法实时跟踪`,
+        duration: 3000
+      })
+    } else if (status.includes('running')) {
+      ElMessage.success(`容器状态: ${containerInfo.status}，将实时跟踪日志`)
+    }
+  }
+  
   if (isConnected.value) {
     refreshLogs()
   }
