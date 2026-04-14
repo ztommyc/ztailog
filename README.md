@@ -8,6 +8,8 @@
 
 ## 📖 简介
 
+![review.gif](review.gif)
+
 Ztailog 是一个基于 Web 的实时日志可视化平台，通过 SSH 通道查看远程服务器上的日志。支持实时查看文件日志、Docker 容器日志、Podman 容器日志和 Kubernetes Pod 日志。
 
 ## ✨ 功能特点

@@ -4,3 +4,5 @@ build
 dist
 nuitka-crash-report.xml
 __pycache__/
+ztailog.db
+ztailog.db.backup

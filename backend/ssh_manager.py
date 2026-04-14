@@ -4,6 +4,7 @@ import threading
 import queue
 from typing import Optional, Dict, List
 import io
+import time
 
 class SSHConnection:
     def __init__(self, host: str, port: int, username: str, password: str = None, private_key: str = None):
@@ -150,28 +151,48 @@ class SSHConnection:
         return self._tail_command(command, channel_id)
     
     def tail_docker_logs(self, container_name: str, lines: int = 100, channel_id: str = None):
-        """查看Docker日志（自动判断实时或历史）"""
-        # 检查容器状态
+        """查看Docker日志（带性能分析）"""
+        start_total = time.time()
+        
+        print(f"\n========== 性能分析开始 ==========")
+        print(f"容器: {container_name}, 行数: {lines}")
+        
+        # 1. 检查容器状态
+        start = time.time()
         status_cmd = f"docker inspect -f '{{{{.State.Status}}}}' {container_name}"
         status_output, _ = self.execute_command(status_cmd)
         status = status_output.strip() if status_output else ''
+        elapsed = (time.time() - start) * 1000
+        print(f"[1] 检查容器状态: {elapsed:.2f}ms, 状态: {status}")
         
-        print(f"容器 {container_name} 状态: {status}")
+        # 2. 测试简单命令
+        start = time.time()
+        test_cmd = f"docker ps -a --filter name={container_name} --format '{{.Status}}'"
+        test_output, _ = self.execute_command(test_cmd)
+        elapsed = (time.time() - start) * 1000
+        print(f"[2] 测试 docker ps: {elapsed:.2f}ms")
         
+        # 3. 测试 docker logs 命令
+        start = time.time()
         if status in ['exited', 'dead', 'created', 'stopped']:
-            # 已停止的容器，只获取历史日志，不使用 -f
             command = f"docker logs --tail={lines} {container_name}"
-            print(f"使用历史日志命令: {command}")
         else:
-            # 运行中的容器，实时跟踪
             command = f"docker logs -f --tail={lines} {container_name}"
-            print(f"使用实时跟踪命令: {command}")
-			
-        test_output, test_error = self.execute_command(f"{command} 2>&1 | head -5")
-        print(f"测试命令输出: {test_output[:200] if test_output else '无'}")
-        print(f"测试命令错误: {test_error[:200] if test_error else '无'}")        
-		
-        return self._tail_command(command, channel_id)
+        
+        print(f"[3] 准备执行命令: {command}")
+        elapsed = (time.time() - start) * 1000
+        print(f"[3] 命令准备耗时: {elapsed:.2f}ms")
+        
+        # 4. 执行命令并返回 channel
+        start = time.time()
+        result = self._tail_command(command, channel_id)
+        elapsed = (time.time() - start) * 1000
+        print(f"[4] 创建 channel 耗时: {elapsed:.2f}ms")
+        
+        total = (time.time() - start_total) * 1000
+        print(f"========== 总耗时: {total:.2f}ms ==========\n")
+        
+        return result
 
     
     def tail_podman_logs(self, container_name: str, lines: int = 100, channel_id: str = None):
