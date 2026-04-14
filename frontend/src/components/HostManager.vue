@@ -137,7 +137,9 @@ const updateHost = async () => {
     if (editingHost.value.password) updateData.password = editingHost.value.password
     if (editingHost.value.private_key) updateData.private_key = editingHost.value.private_key
     
-    await api.put(`/hosts/${editingHost.value.id}`, updateData)
+    await api.post(`/hosts/${editingHost.value.id}`, updateData, {
+      params: { action: 'update' }
+    })
     ElMessage.success('更新成功')
     showEditDialog.value = false
     emit('refresh')
@@ -145,6 +147,19 @@ const updateHost = async () => {
     ElMessage.error('更新失败')
   }
 }
+
+// 删除主机
+const deleteHost = async (hostId) => {
+  try {
+    // 改为 POST
+    await api.post(`/hosts/${hostId}/delete`)
+    ElMessage.success('删除成功')
+    emit('delete-host', hostId)
+  } catch (error) {
+    ElMessage.error('删除失败')
+  }
+}
+
 </script>
 
 <style scoped>

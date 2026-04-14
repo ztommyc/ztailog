@@ -169,7 +169,7 @@ const handleSelectHost = async (host) => {
 
 const handleDeleteHost = async (hostId) => {
   try {
-    await api.delete(`/hosts/${hostId}`)
+    await api.post(`/hosts/${hostId}/delete`)
     ElMessage.success('删除成功')
     await loadHosts()
     if (selectedHost.value?.id === hostId) {

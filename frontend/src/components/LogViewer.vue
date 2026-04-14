@@ -417,7 +417,7 @@ const deleteHistory = async (historyId) => {
       type: 'warning'
     })
     
-    await api.delete(`/hosts/${props.host.id}/log-history/${historyId}`)
+    await api.post(`/hosts/${props.host.id}/log-history/${historyId}/delete`)
     await loadLogPathHistory()
     ElMessage.success('删除成功')
   } catch (error) {
@@ -436,7 +436,7 @@ const clearAllHistory = async () => {
       type: 'warning'
     })
     
-    await api.delete(`/hosts/${props.host.id}/log-history`)
+    await api.post(`/hosts/${props.host.id}/log-history/clear`)
     await loadLogPathHistory()
     ElMessage.success('历史记录已清空')
   } catch (error) {
@@ -1057,7 +1057,7 @@ const refreshLogs = () => {
 
 const updateLogConfig = async () => {
   try {
-    await api.put(`/hosts/${props.host.id}/log-config/${currentLogType.value}`, {
+    await api.post(`/hosts/${props.host.id}/log-config/${currentLogType.value}`, {
       default_lines: linesToShow.value
     })
   } catch (error) {

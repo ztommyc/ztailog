@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -27,7 +27,9 @@ class SSHHost(Base):
     private_key = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+    deleted_at = Column(DateTime, nullable=True)  # 逻辑删除时间戳
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+	
 class LogConfig(Base):
     __tablename__ = 'log_configs'
     
@@ -36,6 +38,8 @@ class LogConfig(Base):
     log_type = Column(String(50), nullable=False)  # file, docker, podman, k8s
     default_lines = Column(Integer, default=100)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)  # 确保这一行存在
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
 
 class LogPathHistory(Base):
     __tablename__ = 'log_path_history'
@@ -46,6 +50,8 @@ class LogPathHistory(Base):
     last_used = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     use_count = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)  # 确保这一行存在
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
 
 # 数据库初始化
 db_path = os.path.join(os.path.dirname(__file__), 'ztailog.db')

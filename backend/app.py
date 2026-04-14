@@ -83,7 +83,7 @@ async def get_hosts():
     """获取所有SSH主机"""
     db = SessionLocal()
     try:
-        hosts = db.query(SSHHost).all()
+        hosts = db.query(SSHHost).filter(SSHHost.is_deleted == False).all()
         return [
             {
                 "id": h.id,
@@ -103,9 +103,13 @@ async def get_host(host_id: int):
     """获取单个主机详情"""
     db = SessionLocal()
     try:
-        host = db.query(SSHHost).filter(SSHHost.id == host_id).first()
+        host = db.query(SSHHost).filter(
+            SSHHost.id == host_id,
+            SSHHost.is_deleted == False
+        ).first()
         if not host:
             raise HTTPException(status_code=404, detail="主机不存在")
+        host = query.first()
         return {
             "id": host.id,
             "name": host.name,
@@ -148,35 +152,63 @@ async def create_host(host: HostCreate):
     finally:
         db.close()
 
-@app.put("/api/hosts/{host_id}")
-async def update_host(host_id: int, host: HostUpdate):
+@app.post("/api/hosts/{host_id}")
+async def update_host(host_id: int, host: HostUpdate, action: str = "update"):
     """更新SSH主机"""
+    if action != "update":
+        raise HTTPException(status_code=400, detail="无效的操作类型")
     db = SessionLocal()
     try:
-        db_host = db.query(SSHHost).filter(SSHHost.id == host_id).first()
+        db_host = db.query(SSHHost).filter(
+            SSHHost.id == host_id,
+            SSHHost.is_deleted == False
+        ).first()
         if not db_host:
             raise HTTPException(status_code=404, detail="主机不存在")
         
         for key, value in host.dict(exclude_unset=True).items():
             setattr(db_host, key, value)
         
+        db_host.updated_at = datetime.utcnow()
         db.commit()
         return {"message": "主机更新成功"}
     finally:
         db.close()
 
-@app.delete("/api/hosts/{host_id}")
+@app.post("/api/hosts/{host_id}/delete")
 async def delete_host(host_id: int):
-    """删除SSH主机"""
+    """逻辑删除SSH主机"""
     db = SessionLocal()
     try:
-        db_host = db.query(SSHHost).filter(SSHHost.id == host_id).first()
+        db_host = db.query(SSHHost).filter(
+            SSHHost.id == host_id,
+            SSHHost.is_deleted == False
+        ).first()
         if not db_host:
             raise HTTPException(status_code=404, detail="主机不存在")
         
-        # 删除相关配置
-        db.query(LogConfig).filter(LogConfig.host_id == host_id).delete()
-        db.delete(db_host)
+        # 逻辑删除主机
+        db_host.is_deleted = True
+        db_host.deleted_at = datetime.utcnow()
+        
+        # 同时逻辑删除关联的配置和历史
+        db.query(LogConfig).filter(
+            LogConfig.host_id == host_id,
+            LogConfig.is_deleted == False
+        ).update({
+            LogConfig.is_deleted: True,
+            LogConfig.deleted_at: datetime.utcnow()
+        })
+        
+        db.query(LogPathHistory).filter(
+            LogPathHistory.host_id == host_id,
+            LogPathHistory.is_deleted == False
+        ).update({
+            LogPathHistory.is_deleted: True,
+            LogPathHistory.deleted_at: datetime.utcnow()
+        })
+        
+        
         db.commit()
         
         # 关闭SSH连接
@@ -188,24 +220,44 @@ async def delete_host(host_id: int):
 
 @app.get("/api/hosts/{host_id}/log-config")
 async def get_log_config(host_id: int):
-    """获取日志配置"""
+    """获取日志配置（只查未删除的）"""
     db = SessionLocal()
     try:
-        configs = db.query(LogConfig).filter(LogConfig.host_id == host_id).all()
+        # 先检查主机是否存在且未删除
+        host = db.query(SSHHost).filter(
+            SSHHost.id == host_id,
+            SSHHost.is_deleted == False
+        ).first()
+        if not host:
+            raise HTTPException(status_code=404, detail="主机不存在")
+        
+        configs = db.query(LogConfig).filter(
+            LogConfig.host_id == host_id,
+            LogConfig.is_deleted == False
+        ).all()
         return {
             config.log_type: config.default_lines for config in configs
         }
     finally:
         db.close()
 
-@app.put("/api/hosts/{host_id}/log-config/{log_type}")
+@app.post("/api/hosts/{host_id}/log-config/{log_type}")
 async def update_log_config(host_id: int, log_type: str, config: LogConfigUpdate):
     """更新日志配置"""
     db = SessionLocal()
     try:
+        # 检查主机是否存在且未删除
+        host = db.query(SSHHost).filter(
+            SSHHost.id == host_id,
+            SSHHost.is_deleted == False
+        ).first()
+        if not host:
+            raise HTTPException(status_code=404, detail="主机不存在")
+        
         db_config = db.query(LogConfig).filter(
             LogConfig.host_id == host_id,
-            LogConfig.log_type == log_type
+            LogConfig.log_type == log_type,
+            LogConfig.is_deleted == False
         ).first()
         
         if db_config:
@@ -228,7 +280,10 @@ async def get_containers(host_id: int, container_type: str):
     """获取容器列表"""
     db = SessionLocal()
     try:
-        host = db.query(SSHHost).filter(SSHHost.id == host_id).first()
+        host = db.query(SSHHost).filter(
+            SSHHost.id == host_id,
+            SSHHost.is_deleted == False
+        ).first()
         if not host:
             raise HTTPException(status_code=404, detail="主机不存在")
         
@@ -502,11 +557,12 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
 
 @app.get("/api/hosts/{host_id}/log-history")
 async def get_log_history(host_id: int):
-    """获取主机的日志路径历史"""
+    """获取主机的日志路径历史（只查未删除的）"""
     db = SessionLocal()
     try:
         histories = db.query(LogPathHistory).filter(
-            LogPathHistory.host_id == host_id
+            LogPathHistory.host_id == host_id,
+            LogPathHistory.is_deleted == False
         ).order_by(LogPathHistory.last_used.desc()).limit(20).all()
         
         return [
@@ -530,19 +586,18 @@ async def add_log_history(host_id: int, log_path: str):
     """添加或更新日志路径历史"""
     db = SessionLocal()
     try:
-        # 查找是否存在
+        # 查找未删除的历史记录
         existing = db.query(LogPathHistory).filter(
             LogPathHistory.host_id == host_id,
-            LogPathHistory.log_path == log_path
+            LogPathHistory.log_path == log_path,
+            LogPathHistory.is_deleted == False
         ).first()
         
         if existing:
-            # 更新使用次数和时间
             existing.use_count += 1
             existing.last_used = datetime.utcnow()
             db.commit()
         else:
-            # 创建新记录
             history = LogPathHistory(
                 host_id=host_id,
                 log_path=log_path,
@@ -560,40 +615,42 @@ async def add_log_history(host_id: int, log_path: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
-
+		
 # 删除日志路径历史
-@app.delete("/api/hosts/{host_id}/log-history/{history_id}")
+@app.post("/api/hosts/{host_id}/log-history/{history_id}/delete")
 async def delete_log_history(host_id: int, history_id: int):
-    """删除日志路径历史"""
+    """逻辑删除日志路径历史"""
     db = SessionLocal()
     try:
         history = db.query(LogPathHistory).filter(
             LogPathHistory.id == history_id,
-            LogPathHistory.host_id == host_id
+            LogPathHistory.host_id == host_id,
+            LogPathHistory.is_deleted == False
         ).first()
         
         if history:
-            db.delete(history)
+            history.is_deleted = True
+            history.deleted_at = datetime.utcnow()
             db.commit()
             return {"message": "删除成功"}
         else:
             raise HTTPException(status_code=404, detail="历史记录不存在")
-    except Exception as e:
-        print(f"删除历史记录错误: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
 # 清空日志路径历史
-@app.delete("/api/hosts/{host_id}/log-history")
+@app.post("/api/hosts/{host_id}/log-history/clear")
 async def clear_log_history(host_id: int):
-    """清空主机的日志路径历史"""
+    """逻辑清空主机的日志路径历史"""
     db = SessionLocal()
     try:
         db.query(LogPathHistory).filter(
-            LogPathHistory.host_id == host_id
-        ).delete()
+            LogPathHistory.host_id == host_id,
+            LogPathHistory.is_deleted == False
+        ).update({
+            LogPathHistory.is_deleted: True,
+            LogPathHistory.deleted_at: datetime.utcnow()
+        })
         db.commit()
         return {"message": "历史记录已清空"}
     except Exception as e:
@@ -629,8 +686,8 @@ async def test_file(host_id: int, file_path: str):
         return {"exists": "exists" in output, "path": file_path}
     finally:
         db.close()
-		
-		
+
+
 # 静态文件服务
 static_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
 if os.path.exists(static_dir):
