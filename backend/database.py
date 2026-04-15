@@ -53,8 +53,22 @@ class LogPathHistory(Base):
     deleted_at = Column(DateTime, nullable=True)  # 确保这一行存在
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
 
+
+def get_db_path():
+    """获取数据库文件路径（支持打包后运行）"""
+    if getattr(sys, 'frozen', False):
+        # 打包后运行，数据库放在可执行文件同级目录
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        # 开发环境运行
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    db_path = os.path.join(base_dir, 'ztailog.db')
+    print(f"数据库路径: {db_path}")
+    return db_path
+
 # 数据库初始化
-db_path = os.path.join(os.path.dirname(__file__), 'ztailog.db')
+db_path = get_db_path()
 engine = create_engine(f'sqlite:///{db_path}', connect_args={'check_same_thread': False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 

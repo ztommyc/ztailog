@@ -6,3 +6,5 @@ nuitka-crash-report.xml
 __pycache__/
 ztailog.db
 ztailog.db.backup
+build.py
+*.spec

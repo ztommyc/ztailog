@@ -17,10 +17,10 @@ cp -rf frontend/dist/* backend/static/
 pip install pyinstaller
 
 # 打包
-echo "打包 x86 版本..."
+echo "打包"
 pyinstaller --onefile \
-    --name ztailog_x86 \
-    --add-data "backend/static:static" \
+    --name ztailog \
+    --add-data "frontend/dist:static" \
     --hidden-import uvicorn \
     --hidden-import uvicorn.loops \
     --hidden-import uvicorn.loops.auto \
@@ -35,9 +35,6 @@ pyinstaller --onefile \
     --collect-all fastapi \
     --collect-all paramiko \
     backend/app.py
-
-# 重命名
-mv dist/app dist/ztailog_x86
 
 echo "打包完成！"
 ls -lh dist/

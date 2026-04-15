@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import uvicorn
@@ -10,7 +11,6 @@ import os
 import sys
 import io
 import zipfile
-from fastapi.responses import StreamingResponse
 
 from database import SessionLocal, SSHHost, LogConfig, LogPathHistory, init_db
 from ssh_manager import SSHManager
@@ -18,24 +18,47 @@ from log_handlers import stream_manager
 import uuid
 from datetime import datetime
 
+# ==================== 路径配置 ====================
+def get_base_dir():
+    """获取程序运行时的基础目录"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的路径
+        return os.path.dirname(sys.executable)
+    else:
+        # 开发环境路径
+        return os.path.dirname(os.path.abspath(__file__))
 
+def get_static_dir():
+    """获取静态文件目录"""
+    base_dir = get_base_dir()
+    
+    # 1. 检查可执行文件同级的 static 目录
+    local_static = os.path.join(base_dir, 'static')
+    if os.path.exists(local_static):
+        return local_static
+    
+    # 2. 检查 PyInstaller 临时解压目录
+    if hasattr(sys, '_MEIPASS'):
+        meipass_static = os.path.join(sys._MEIPASS, 'static')
+        if os.path.exists(meipass_static):
+            return meipass_static
+    
+    # 3. 开发环境：检查 frontend/dist 目录
+    dev_static = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
+    if os.path.exists(dev_static):
+        return dev_static
+    
+    return None
 
-# 获取可执行文件所在目录（打包后使用）
-if getattr(sys, 'frozen', False):
-    # 打包后的路径
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    # 开发环境路径
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 数据库路径
+BASE_DIR = get_base_dir()
+STATIC_DIR = get_static_dir()
 DB_PATH = os.path.join(BASE_DIR, 'ztailog.db')
 
-# 静态文件路径
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
-if not os.path.exists(STATIC_DIR):
-    STATIC_DIR = os.path.join(os.path.dirname(__file__), 'static')
+print(f"BASE_DIR: {BASE_DIR}")
+print(f"STATIC_DIR: {STATIC_DIR}")
+print(f"DB_PATH: {DB_PATH}")
 
+# ==================== FastAPI 应用 ====================
 app = FastAPI(title="Ztailog - 日志可视化平台")
 
 # CORS配置
@@ -50,7 +73,7 @@ app.add_middleware(
 # 初始化数据库
 init_db()
 
-# Pydantic模型
+# ==================== Pydantic模型 ====================
 class HostCreate(BaseModel):
     name: str
     host: str
@@ -58,8 +81,7 @@ class HostCreate(BaseModel):
     username: str
     password: Optional[str] = None
     private_key: Optional[str] = None
-	
-# 添加日志路径历史相关模型
+
 class LogPathHistoryItem(BaseModel):
     id: int
     log_path: str
@@ -77,7 +99,7 @@ class HostUpdate(BaseModel):
 class LogConfigUpdate(BaseModel):
     default_lines: int = 100
 
-# API路由
+# ==================== API路由 ====================
 @app.get("/api/hosts")
 async def get_hosts():
     """获取所有SSH主机"""
@@ -109,7 +131,6 @@ async def get_host(host_id: int):
         ).first()
         if not host:
             raise HTTPException(status_code=404, detail="主机不存在")
-        host = query.first()
         return {
             "id": host.id,
             "name": host.name,
@@ -208,13 +229,16 @@ async def delete_host(host_id: int):
             LogPathHistory.deleted_at: datetime.utcnow()
         })
         
-        
         db.commit()
         
         # 关闭SSH连接
         SSHManager.close_connection(host_id)
         
         return {"message": "主机删除成功"}
+    except Exception as e:
+        db.rollback()
+        print(f"删除主机错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
@@ -287,7 +311,7 @@ async def get_containers(host_id: int, container_type: str):
         if not host:
             raise HTTPException(status_code=404, detail="主机不存在")
         
-        print(f"获取容器列表: host_id={host_id}, container_type={container_type}")  # 调试
+        print(f"获取容器列表: host_id={host_id}, container_type={container_type}")
         
         ssh_conn = SSHManager.get_connection(host_id, {
             'host': host.host,
@@ -302,7 +326,7 @@ async def get_containers(host_id: int, container_type: str):
         
         if container_type == 'docker':
             containers = ssh_conn.get_docker_containers()
-            print(f"Docker 容器数量: {len(containers)}")  # 调试
+            print(f"Docker 容器数量: {len(containers)}")
         elif container_type == 'podman':
             containers = ssh_conn.get_podman_containers()
         elif container_type == 'k8s':
@@ -397,7 +421,6 @@ async def download_file(host_id: int, file_path: str):
             # 文件大于3MB，压缩后下载
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                # 将日志内容写入 zip 文件
                 zip_file.writestr(filename, content)
             
             zip_buffer.seek(0)
@@ -418,12 +441,11 @@ async def download_file(host_id: int, file_path: str):
     finally:
         db.close()
 
-# WebSocket路由
+# ==================== WebSocket路由 ====================
 @app.websocket("/ws/logs/{host_id}")
 async def websocket_logs(websocket: WebSocket, host_id: int):
     await websocket.accept()
     
-    # 设置事件循环到 stream_manager
     stream_manager.set_event_loop(asyncio.get_event_loop())
     
     stream_id = None
@@ -434,7 +456,6 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
             message = json.loads(data)
             print(f"收到 WebSocket 消息: {message}")
             
-            # 获取主机配置
             db = SessionLocal()
             try:
                 host = db.query(SSHHost).filter(SSHHost.id == host_id).first()
@@ -454,7 +475,6 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
                     await websocket.send_text(json.dumps({"error": "SSH连接失败"}))
                     continue
                 
-                # 处理不同的日志类型
                 if message['type'] == 'file':
                     log_path = message['path']
                     lines = message.get('lines', 100)
@@ -462,7 +482,6 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
                     
                     print(f"开始跟踪文件日志: {log_path}, 行数: {lines}")
                     
-                    # 先测试文件是否存在
                     test_cmd = f"test -f {log_path} && echo 'exists' || echo 'not exists'"
                     test_output, test_error = ssh_conn.execute_command(test_cmd)
                     print(f"文件检查结果: {test_output}")
@@ -470,12 +489,13 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
                     if 'not exists' in test_output:
                         await websocket.send_text(json.dumps({"error": f"文件不存在: {log_path}"}))
                         continue
-                    # 2. 检查文件是否为文本文件
+                    
                     if not ssh_conn.is_text_file(log_path):
                         await websocket.send_text(json.dumps({
                             "error": f"文件 {log_path} 不是文本文件，无法查看。只支持查看文本格式的日志文件。"
                         }))
-                        continue                    
+                        continue
+                    
                     channel = ssh_conn.tail_log(log_path, lines, stream_id)
                     if channel:
                         stream_manager.add_stream(stream_id, ssh_conn, channel, 'file', message)
@@ -555,6 +575,7 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
         if stream_id:
             stream_manager.remove_websocket(stream_id, websocket)
 
+# ==================== 日志历史 API ====================
 @app.get("/api/hosts/{host_id}/log-history")
 async def get_log_history(host_id: int):
     """获取主机的日志路径历史（只查未删除的）"""
@@ -580,13 +601,11 @@ async def get_log_history(host_id: int):
     finally:
         db.close()
 
-# 添加或更新日志路径历史
 @app.post("/api/hosts/{host_id}/log-history")
 async def add_log_history(host_id: int, log_path: str):
     """添加或更新日志路径历史"""
     db = SessionLocal()
     try:
-        # 查找未删除的历史记录
         existing = db.query(LogPathHistory).filter(
             LogPathHistory.host_id == host_id,
             LogPathHistory.log_path == log_path,
@@ -615,8 +634,7 @@ async def add_log_history(host_id: int, log_path: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
-		
-# 删除日志路径历史
+
 @app.post("/api/hosts/{host_id}/log-history/{history_id}/delete")
 async def delete_log_history(host_id: int, history_id: int):
     """逻辑删除日志路径历史"""
@@ -638,7 +656,6 @@ async def delete_log_history(host_id: int, history_id: int):
     finally:
         db.close()
 
-# 清空日志路径历史
 @app.post("/api/hosts/{host_id}/log-history/clear")
 async def clear_log_history(host_id: int):
     """逻辑清空主机的日志路径历史"""
@@ -687,11 +704,45 @@ async def test_file(host_id: int, file_path: str):
     finally:
         db.close()
 
+# ==================== 静态文件服务（放在最后，避免拦截API路由） ====================
+if STATIC_DIR and os.path.exists(STATIC_DIR):
+    print(f"挂载静态文件目录: {STATIC_DIR}")
+    
+    # 挂载 assets 目录
+    assets_dir = os.path.join(STATIC_DIR, 'assets')
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    
+    # 根路径返回 index.html
+    @app.get("/")
+    async def root():
+        index_path = os.path.join(STATIC_DIR, 'index.html')
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return {"error": "Index file not found"}
+    
+    # SPA 路由处理
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # 跳过 API 和 WebSocket 路由
+        if full_path.startswith('api/') or full_path.startswith('ws/'):
+            # 让其他路由处理
+            raise HTTPException(status_code=404)
+        
+        file_path = os.path.join(STATIC_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # 返回 index.html 用于前端路由
+        index_path = os.path.join(STATIC_DIR, 'index.html')
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return {"error": "Not found"}
+else:
+    print(f"警告: 静态文件目录不存在: {STATIC_DIR}")
 
-# 静态文件服务
-static_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
-if os.path.exists(static_dir):
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
-
+# ==================== 启动入口 ====================
 if __name__ == "__main__":
+    print(f"启动 Ztailog 服务器...")
+    print(f"访问地址: http://0.0.0.0:60501")
     uvicorn.run(app, host="0.0.0.0", port=60501)
