@@ -2,9 +2,15 @@
 
 echo "=== 本地打包 Ztailog ==="
 
+#构建后端
+cd  backend
+python3 -m pip install --upgrade pip
+# 使用国内镜像源
+pip3 install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
 # 构建前端
 echo "构建前端..."
-cd frontend
+cd ../frontend
 npm install
 npm run build
 cd ..
