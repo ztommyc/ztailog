@@ -1,12 +1,12 @@
 #!/bin/bash
-
+set -e
 echo "=== 本地打包 Ztailog ==="
 
 #构建后端
 cd  backend
 python3 -m pip install --upgrade pip
 # 使用国内镜像源
-pip3 install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip3 install -r requirements.txt
 
 # 构建前端
 echo "构建前端..."
