@@ -94,7 +94,7 @@ def migrate_table_with_mapping(source_db, target_db, source_table_name,target_ta
 
 if __name__ == "__main__":
     # 示例数据库文件路径
-    source_db = "/home/finance/qingzhou_deploy/deploy.db"
+    source_db = "/home/deploy.db"
     target_db = "ztailog.db"
     source_table_name = "deploy_server"
     target_table_name = "ssh_hosts"
