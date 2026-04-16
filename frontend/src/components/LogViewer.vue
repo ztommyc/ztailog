@@ -288,7 +288,6 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 
 
-
 const props = defineProps({
   host: {
     type: Object,
@@ -507,7 +506,10 @@ const escapeHtml = (text) => {
     "'": '&#39;'
   }
   return text.replace(/[&<>"']/g, (m) => map[m]) */
-  return text;
+  return text.replace(
+        /(?:\x1b\[|\u001b\[|\\e\[)[0-9;]*[mGK]/g, 
+        ''
+    );
 }
 
 // 使用 highlight.js 高亮单行
