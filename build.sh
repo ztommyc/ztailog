@@ -26,6 +26,7 @@ pip install pyinstaller
 echo "打包"
 pyinstaller --onefile \
     --name ztailog \
+    --runtime-tmpdir ./ \
     --add-data "frontend/dist:static" \
     --hidden-import uvicorn \
     --hidden-import uvicorn.loops \

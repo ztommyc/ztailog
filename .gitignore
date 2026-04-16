@@ -8,3 +8,4 @@ ztailog.db
 ztailog.db.backup
 build.py
 *.spec
+.workflow
