@@ -912,8 +912,8 @@ const startLogging = () => {
   clearLogs()  // 清空日志
   
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//${window.location.hostname}:60501/ws/logs/${props.host.id}`
-  
+  const CONTEXT_PATH = '/ztailog'
+  const wsUrl = `${protocol}//${window.location.hostname}:60501${CONTEXT_PATH}/ws/logs/${props.host.id}`
   ws = new WebSocket(wsUrl)
   
   ws.onopen = () => {

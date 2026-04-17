@@ -1,7 +1,9 @@
 import axios from 'axios'
 
+const CONTEXT_PATH = '/ztailog'
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: CONTEXT_PATH + '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -9,7 +11,7 @@ const api = axios.create({
 })
 // 下载文件时使用单独的配置
 export const downloadApi = axios.create({
-  baseURL: '/api',
+  baseURL: CONTEXT_PATH + '/api',
   timeout: 120000,  // 增加超时时间到 120 秒
   responseType: 'blob'
 })

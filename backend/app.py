@@ -17,33 +17,30 @@ from ssh_manager import SSHManager
 from log_handlers import stream_manager
 import uuid
 from datetime import datetime
+# ==================== 配置 ====================
+CONTEXT_PATH = "/ztailog"
 
 # ==================== 路径配置 ====================
 def get_base_dir():
     """获取程序运行时的基础目录"""
     if getattr(sys, 'frozen', False):
-        # 打包后的路径
         return os.path.dirname(sys.executable)
     else:
-        # 开发环境路径
         return os.path.dirname(os.path.abspath(__file__))
 
 def get_static_dir():
     """获取静态文件目录"""
     base_dir = get_base_dir()
     
-    # 1. 检查可执行文件同级的 static 目录
     local_static = os.path.join(base_dir, 'static')
     if os.path.exists(local_static):
         return local_static
     
-    # 2. 检查 PyInstaller 临时解压目录
     if hasattr(sys, '_MEIPASS'):
         meipass_static = os.path.join(sys._MEIPASS, 'static')
         if os.path.exists(meipass_static):
             return meipass_static
     
-    # 3. 开发环境：检查 frontend/dist 目录
     dev_static = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
     if os.path.exists(dev_static):
         return dev_static
@@ -57,6 +54,7 @@ DB_PATH = os.path.join(BASE_DIR, 'ztailog.db')
 print(f"BASE_DIR: {BASE_DIR}")
 print(f"STATIC_DIR: {STATIC_DIR}")
 print(f"DB_PATH: {DB_PATH}")
+print(f"CONTEXT_PATH: {CONTEXT_PATH}")
 
 # ==================== FastAPI 应用 ====================
 app = FastAPI(title="Ztailog - 日志可视化平台")
@@ -100,7 +98,7 @@ class LogConfigUpdate(BaseModel):
     default_lines: int = 100
 
 # ==================== API路由 ====================
-@app.get("/api/hosts")
+@app.get(CONTEXT_PATH + "/api/hosts")
 async def get_hosts():
     """获取所有SSH主机"""
     db = SessionLocal()
@@ -120,7 +118,7 @@ async def get_hosts():
     finally:
         db.close()
 
-@app.get("/api/hosts/{host_id}")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}")
 async def get_host(host_id: int):
     """获取单个主机详情"""
     db = SessionLocal()
@@ -142,7 +140,7 @@ async def get_host(host_id: int):
     finally:
         db.close()
 
-@app.post("/api/hosts")
+@app.post(CONTEXT_PATH + "/api/hosts")
 async def create_host(host: HostCreate):
     """创建SSH主机"""
     db = SessionLocal()
@@ -173,7 +171,7 @@ async def create_host(host: HostCreate):
     finally:
         db.close()
 
-@app.post("/api/hosts/{host_id}")
+@app.post(CONTEXT_PATH + "/api/hosts/{host_id}")
 async def update_host(host_id: int, host: HostUpdate, action: str = "update"):
     """更新SSH主机"""
     if action != "update":
@@ -196,7 +194,7 @@ async def update_host(host_id: int, host: HostUpdate, action: str = "update"):
     finally:
         db.close()
 
-@app.post("/api/hosts/{host_id}/delete")
+@app.post(CONTEXT_PATH + "/api/hosts/{host_id}/delete")
 async def delete_host(host_id: int):
     """逻辑删除SSH主机"""
     db = SessionLocal()
@@ -242,7 +240,7 @@ async def delete_host(host_id: int):
     finally:
         db.close()
 
-@app.get("/api/hosts/{host_id}/log-config")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}/log-config")
 async def get_log_config(host_id: int):
     """获取日志配置（只查未删除的）"""
     db = SessionLocal()
@@ -265,7 +263,7 @@ async def get_log_config(host_id: int):
     finally:
         db.close()
 
-@app.post("/api/hosts/{host_id}/log-config/{log_type}")
+@app.post(CONTEXT_PATH + "/api/hosts/{host_id}/log-config/{log_type}")
 async def update_log_config(host_id: int, log_type: str, config: LogConfigUpdate):
     """更新日志配置"""
     db = SessionLocal()
@@ -299,7 +297,7 @@ async def update_log_config(host_id: int, log_type: str, config: LogConfigUpdate
     finally:
         db.close()
 
-@app.get("/api/hosts/{host_id}/containers/{container_type}")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}/containers/{container_type}")
 async def get_containers(host_id: int, container_type: str):
     """获取容器列表"""
     db = SessionLocal()
@@ -348,7 +346,7 @@ async def get_containers(host_id: int, container_type: str):
     finally:
         db.close()
 
-@app.get("/api/hosts/{host_id}/files")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}/files")
 async def get_files(host_id: int, path: str = "/"):
     """获取文件列表"""
     db = SessionLocal()
@@ -377,7 +375,7 @@ async def get_files(host_id: int, path: str = "/"):
     finally:
         db.close()
 
-@app.get("/api/hosts/{host_id}/download")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}/download")
 async def download_file(host_id: int, file_path: str):
     """下载完整文件（大于3M自动压缩）"""
     db = SessionLocal()
@@ -442,7 +440,7 @@ async def download_file(host_id: int, file_path: str):
         db.close()
 
 # ==================== WebSocket路由 ====================
-@app.websocket("/ws/logs/{host_id}")
+@app.websocket(CONTEXT_PATH + "/ws/logs/{host_id}")
 async def websocket_logs(websocket: WebSocket, host_id: int):
     await websocket.accept()
     
@@ -576,7 +574,7 @@ async def websocket_logs(websocket: WebSocket, host_id: int):
             stream_manager.remove_websocket(stream_id, websocket)
 
 # ==================== 日志历史 API ====================
-@app.get("/api/hosts/{host_id}/log-history")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}/log-history")
 async def get_log_history(host_id: int):
     """获取主机的日志路径历史（只查未删除的）"""
     db = SessionLocal()
@@ -601,7 +599,7 @@ async def get_log_history(host_id: int):
     finally:
         db.close()
 
-@app.post("/api/hosts/{host_id}/log-history")
+@app.post(CONTEXT_PATH + "/api/hosts/{host_id}/log-history")
 async def add_log_history(host_id: int, log_path: str):
     """添加或更新日志路径历史"""
     db = SessionLocal()
@@ -635,7 +633,7 @@ async def add_log_history(host_id: int, log_path: str):
     finally:
         db.close()
 
-@app.post("/api/hosts/{host_id}/log-history/{history_id}/delete")
+@app.post(CONTEXT_PATH + "/api/hosts/{host_id}/log-history/{history_id}/delete")
 async def delete_log_history(host_id: int, history_id: int):
     """逻辑删除日志路径历史"""
     db = SessionLocal()
@@ -656,7 +654,7 @@ async def delete_log_history(host_id: int, history_id: int):
     finally:
         db.close()
 
-@app.post("/api/hosts/{host_id}/log-history/clear")
+@app.post(CONTEXT_PATH + "/api/hosts/{host_id}/log-history/clear")
 async def clear_log_history(host_id: int):
     """逻辑清空主机的日志路径历史"""
     db = SessionLocal()
@@ -677,7 +675,7 @@ async def clear_log_history(host_id: int):
     finally:
         db.close()
 
-@app.get("/api/hosts/{host_id}/test-file")
+@app.get(CONTEXT_PATH + "/api/hosts/{host_id}/test-file")
 async def test_file(host_id: int, file_path: str):
     """测试文件是否存在"""
     db = SessionLocal()
@@ -714,7 +712,7 @@ if STATIC_DIR and os.path.exists(STATIC_DIR):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
     
     # 根路径返回 index.html
-    @app.get("/")
+    @app.get(CONTEXT_PATH + "/")
     async def root():
         index_path = os.path.join(STATIC_DIR, 'index.html')
         if os.path.exists(index_path):
@@ -722,7 +720,7 @@ if STATIC_DIR and os.path.exists(STATIC_DIR):
         return {"error": "Index file not found"}
     
     # SPA 路由处理
-    @app.get("/{full_path:path}")
+    @app.get(CONTEXT_PATH + "/{full_path:path}")
     async def serve_spa(full_path: str):
         # 跳过 API 和 WebSocket 路由
         if full_path.startswith('api/') or full_path.startswith('ws/'):
